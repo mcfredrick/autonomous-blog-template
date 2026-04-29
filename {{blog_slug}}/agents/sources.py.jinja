@@ -1,0 +1,264 @@
+"""Source fetchers for the research agent. Each returns raw content or []."""
+
+import os
+import re
+import sys
+from datetime import datetime, timezone, timedelta
+from typing import Any
+
+import feedparser
+import httpx
+
+from config import BOT_USER_AGENT
+
+HEADERS = {"User-Agent": BOT_USER_AGENT}
+TIMEOUT = 20
+
+# Keywords derived from topic_focus — used to filter GitHub trending results
+_TOPIC_KEYWORDS = re.compile(
+    r"\b(" + "|".join(re.escape(w.strip()) for w in "{{ topic_focus }}".replace(",", " ").split() if len(w.strip()) > 2) + r")\b",
+    re.IGNORECASE,
+)
+
+
+def _get(url: str, **kwargs) -> httpx.Response | None:
+    try:
+        headers = kwargs.pop("headers", HEADERS)
+        r = httpx.get(url, headers=headers, timeout=TIMEOUT, follow_redirects=True, **kwargs)
+        r.raise_for_status()
+        return r
+    except Exception as e:
+        print(f"  fetch failed {url}: {e}", file=sys.stderr)
+        return None
+
+
+def _quality_score(repo: dict) -> float:
+    now = datetime.now(timezone.utc)
+    stars = repo.get("stargazers_count", 0)
+    forks = repo.get("forks_count", 0)
+
+    created_at = datetime.fromisoformat(repo.get("created_at", "1970-01-01T00:00:00Z").replace("Z", "+00:00"))
+    pushed_at = datetime.fromisoformat(repo.get("pushed_at", "1970-01-01T00:00:00Z").replace("Z", "+00:00"))
+    age_days = max((now - created_at).days, 1)
+    pushed_days_ago = (now - pushed_at).days
+
+    score = 0.0
+
+    velocity = stars / age_days
+    if velocity >= 10:
+        score += 0.30
+    elif velocity >= 5:
+        score += 0.20
+    elif velocity >= 1:
+        score += 0.10
+
+    if stars > 0:
+        ratio = forks / stars
+        if ratio >= 0.15:
+            score += 0.20
+        elif ratio >= 0.05:
+            score += 0.10
+
+    if pushed_days_ago <= 14:
+        score += 0.15
+
+    if repo.get("description"):
+        score += 0.10
+
+    if repo.get("topics"):
+        score += 0.10
+
+    if repo.get("license"):
+        score += 0.05
+
+    if stars >= 20:
+        score += 0.10
+
+    return min(score, 1.0)
+
+{% if arxiv_categories %}
+
+def arxiv_papers() -> list[dict]:
+    """Fetch recent papers from configured ArXiv categories."""
+    results = []
+    for category in {{ arxiv_categories | tojson }}:
+        feed = feedparser.parse(f"https://arxiv.org/rss/{category}")
+        for entry in feed.entries[:15]:
+            results.append({
+                "title": entry.get("title", ""),
+                "url": entry.get("link", ""),
+                "text": entry.get("summary", ""),
+            })
+    return results
+
+{% endif %}
+{% if hn_keywords %}
+
+def hacker_news_stories() -> list[dict]:
+    """Fetch HN stories about configured topics."""
+    queries = {{ hn_keywords | tojson }}
+    seen: set[str] = set()
+    results = []
+    for query in queries:
+        r = _get(
+            "https://hn.algolia.com/api/v1/search",
+            params={
+                "tags": "story",
+                "query": query,
+                "numericFilters": "points>10",
+                "hitsPerPage": 10,
+            },
+        )
+        if not r:
+            continue
+        for hit in r.json().get("hits", []):
+            url = hit.get("url") or f"https://news.ycombinator.com/item?id={hit.get('objectID')}"
+            if url in seen:
+                continue
+            seen.add(url)
+            results.append({
+                "title": hit.get("title", ""),
+                "url": url,
+                "text": f"Points: {hit.get('points', 0)}, Comments: {hit.get('num_comments', 0)}",
+            })
+    return results
+
+
+def hacker_news_ask() -> list[dict]:
+    """Fetch HN Ask HN threads about configured topics."""
+    # Use shorter/broader terms for ask search to find pain-point discussions
+    ask_terms = [kw.split()[0] for kw in {{ hn_keywords | tojson }}][:4]
+    seen: set[str] = set()
+    results = []
+    for query in ask_terms:
+        r = _get(
+            "https://hn.algolia.com/api/v1/search",
+            params={
+                "tags": "ask_hn",
+                "query": query,
+                "numericFilters": "points>3",
+                "hitsPerPage": 10,
+            },
+        )
+        if not r:
+            continue
+        for hit in r.json().get("hits", []):
+            title = hit.get("title", "")
+            if not title or title in seen:
+                continue
+            seen.add(title)
+            results.append({
+                "title": title,
+                "url": f"https://news.ycombinator.com/item?id={hit.get('objectID')}",
+                "text": f"Points: {hit.get('points', 0)}, Comments: {hit.get('num_comments', 0)}",
+            })
+    return results
+
+{% endif %}
+{% if rss_feeds %}
+{% for feed in rss_feeds %}
+
+def rss_{{ feed.name | lower | replace(' ', '_') | replace('-', '_') }}() -> list[dict]:
+    """Fetch {{ feed.name }} RSS feed."""
+    feed = feedparser.parse({{ feed.url | tojson }})
+    results = []
+    for entry in feed.entries[:10]:
+        results.append({
+            "title": entry.get("title", ""),
+            "url": entry.get("link", ""),
+            "text": entry.get("summary", ""),
+        })
+    return results
+
+{% endfor %}
+{% endif %}
+{% if github_topics %}
+
+def github_topic_repos(since_days: int = 30, score_threshold: float = 0.3) -> list[dict]:
+    """Search GitHub for repos matching configured topics."""
+    now = datetime.now(timezone.utc)
+    since_date = (now - timedelta(days=since_days)).strftime("%Y-%m-%d")
+
+    topics = {{ github_topics | tojson }}
+
+    gh_token = os.environ.get("GH_TOKEN", "")
+    gh_headers = {**HEADERS, "Authorization": f"Bearer {gh_token}"} if gh_token else HEADERS
+
+    seen_urls: set[str] = set()
+    results = []
+
+    for topic in topics:
+        r = _get(
+            "https://api.github.com/search/repositories",
+            params={
+                "q": f"topic:{topic} pushed:>{since_date} stars:>=10",
+                "sort": "stars", "order": "desc", "per_page": 10,
+            },
+            headers=gh_headers,
+        )
+        if not r:
+            continue
+        for repo in r.json().get("items", []):
+            url = repo.get("html_url", "")
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            if _quality_score(repo) < score_threshold:
+                continue
+            desc = repo.get("description") or ""
+            topics_list = " ".join(repo.get("topics", []))
+            results.append({
+                "title": repo.get("full_name", ""),
+                "url": url,
+                "text": f"Stars: {repo['stargazers_count']}, Forks: {repo['forks_count']}. {desc}. Topics: {topics_list}",
+            })
+
+    return results
+
+{% endif %}
+
+def github_trending() -> list[dict]:
+    """Scrape GitHub trending repos filtered by topic keywords."""
+    from bs4 import BeautifulSoup
+
+    r = _get("https://github.com/trending?since=daily")
+    if not r:
+        return []
+
+    soup = BeautifulSoup(r.text, "html.parser")
+    results = []
+    for article in soup.select("article.Box-row"):
+        try:
+            name_tag = article.select_one("h2 a")
+            if not name_tag:
+                continue
+            repo_path = name_tag["href"].lstrip("/")
+            url = f"https://github.com/{repo_path}"
+            desc_tag = article.select_one("p")
+            desc = desc_tag.get_text(strip=True) if desc_tag else ""
+            if not _TOPIC_KEYWORDS.search(repo_path) and not _TOPIC_KEYWORDS.search(desc):
+                continue
+            results.append({"title": repo_path, "url": url, "text": desc})
+        except Exception:
+            continue
+    return results
+
+
+ALL_SOURCES: dict[str, Any] = {
+{% if arxiv_categories %}
+    "arxiv_papers": arxiv_papers,
+{% endif %}
+{% if hn_keywords %}
+    "hacker_news_stories": hacker_news_stories,
+    "hacker_news_ask": hacker_news_ask,
+{% endif %}
+{% if rss_feeds %}
+{% for feed in rss_feeds %}
+    "rss_{{ feed.name | lower | replace(' ', '_') | replace('-', '_') }}": rss_{{ feed.name | lower | replace(' ', '_') | replace('-', '_') }},
+{% endfor %}
+{% endif %}
+{% if github_topics %}
+    "github_topic_repos": github_topic_repos,
+{% endif %}
+    "github_trending": github_trending,
+}

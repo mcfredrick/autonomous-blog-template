@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <script>
+    (function() {
+      var t = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  {{ partial "head.html" . }}
+</head>
+<body>
+  {{ partial "header.html" . }}
+  <main class="content">
+    {{ block "main" . }}{{ end }}
+  </main>
+  {{ partial "footer.html" . }}
+  <script>
+    // Copy buttons on all pre blocks
+    var ICON_COPY = '<svg viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    var ICON_CHECK = '<svg viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    document.querySelectorAll('.post-content pre').forEach(function(pre) {
+      var btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.setAttribute('aria-label', 'Copy code');
+      btn.innerHTML = ICON_COPY;
+      btn.addEventListener('click', function() {
+        var code = pre.querySelector('code');
+        navigator.clipboard.writeText(code ? code.innerText : pre.innerText).then(function() {
+          btn.innerHTML = ICON_CHECK;
+          btn.classList.add('copied');
+          setTimeout(function() { btn.innerHTML = ICON_COPY; btn.classList.remove('copied'); }, 1500);
+        });
+      });
+      pre.appendChild(btn);
+    });
+
+    // Copy link buttons on post entries
+    var ICON_LINK = '<svg viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+    var seenSlugs = {};
+    document.querySelectorAll('.post-content p, .post-content li').forEach(function(p) {
+      var first = p.firstElementChild;
+      if (!first) return;
+      // Support both **[link]()** (strong > a) and plain [link]() (a) as first child
+      var a;
+      if (first.tagName === 'STRONG' && first.firstElementChild && first.firstElementChild.tagName === 'A') {
+        a = first.firstElementChild;
+      } else if (first.tagName === 'A') {
+        a = first;
+      } else {
+        return;
+      }
+      var base = a.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      seenSlugs[base] = (seenSlugs[base] || 0) + 1;
+      var slug = seenSlugs[base] > 1 ? base + '-' + seenSlugs[base] : base;
+      p.id = slug;
+      var btn = document.createElement('button');
+      btn.className = 'entry-link-btn';
+      btn.setAttribute('aria-label', 'Copy link to this entry');
+      btn.innerHTML = ICON_LINK;
+      btn.addEventListener('click', function() {
+        var url = window.location.origin + window.location.pathname + '#' + slug;
+        var title = a.textContent.trim();
+        if (navigator.share) {
+          navigator.share({ url: url, title: title });
+        } else {
+          navigator.clipboard.writeText(url).then(function() {
+            btn.classList.add('copied');
+            setTimeout(function() { btn.classList.remove('copied'); }, 1500);
+          });
+        }
+      });
+      // Append button after the link (or its strong wrapper)
+      first.appendChild(btn);
+    });
+
+    document.getElementById('theme-toggle').addEventListener('click', function() {
+      var html = document.documentElement;
+      var next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+      this.textContent = next === 'dark' ? 'Day' : 'Night';
+    });
+    (function() {
+      var t = document.documentElement.getAttribute('data-theme');
+      var btn = document.getElementById('theme-toggle');
+      if (btn) btn.textContent = t === 'dark' ? 'Day' : 'Night';
+    })();
+  </script>
+</body>
+</html>

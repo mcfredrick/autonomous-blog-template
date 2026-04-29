@@ -1,0 +1,48 @@
+# Copier template for autonomous daily topic blogs.
+# Run: copier copy gh:mcfredrick/autonomous-blog-template my-new-blog
+
+_subdirectory: "{{blog_slug}}"
+
+blog_name:
+  type: str
+  help: "Blog name (e.g. Terra)"
+
+blog_slug:
+  type: str
+  help: "Lowercase slug, used for theme dir and bot name (e.g. terra)"
+
+blog_description:
+  type: str
+  help: "One-line description shown in the header (e.g. Daily climate tech digest for engineers)"
+
+audience_description:
+  type: str
+  help: "Who is the audience? Used in agent prompts (e.g. engineers pivoting into climate tech)"
+
+topic_focus:
+  type: str
+  help: "What topics does this blog cover? Used in agent prompts (e.g. climate, clean energy, sustainability)"
+
+github_repo:
+  type: str
+  help: "GitHub repo (owner/name, e.g. mcfredrick/terra)"
+
+arxiv_categories:
+  type: yaml
+  help: "ArXiv category codes to follow (e.g. [eess.SY, physics.ao-ph, cond-mat.mtrl-sci])"
+  default: []
+
+hn_keywords:
+  type: yaml
+  help: "Hacker News search keywords (e.g. [climate tech, clean energy, carbon capture])"
+  default: []
+
+rss_feeds:
+  type: yaml
+  help: "RSS feeds as list of {name: '...', url: '...'} (e.g. [{name: IEA, url: 'https://www.iea.org/feed/news'}])"
+  default: []
+
+github_topics:
+  type: yaml
+  help: "GitHub topic keywords to search (e.g. [solar-energy, carbon-footprint, climate-model])"
+  default: []

@@ -1,0 +1,20 @@
+baseURL = "https://{{ github_repo | replace('/', '.github.io/') }}/"
+title = "{{ blog_name }}"
+languageCode = "en-us"
+theme = "{{ blog_slug }}"
+paginate = 20
+
+[taxonomies]
+  tag = "tags"
+
+[outputs]
+  home = ["HTML", "RSS"]
+  section = ["HTML", "RSS"]
+
+[params]
+  description = "{{ blog_description }}"
+  author = "{{ blog_slug }}-bot"
+
+[markup]
+  [markup.highlight]
+    noClasses = false
