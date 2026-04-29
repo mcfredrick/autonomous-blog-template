@@ -1,7 +1,7 @@
 # Copier template for autonomous daily topic blogs.
 # Run: copier copy gh:mcfredrick/autonomous-blog-template my-new-blog
 
-_subdirectory: "{{blog_slug}}"
+_subdirectory: "template"
 
 blog_name:
   type: str
