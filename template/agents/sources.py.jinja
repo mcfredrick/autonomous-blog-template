@@ -216,6 +216,67 @@ def github_topic_repos(since_days: int = 30, score_threshold: float = 0.3) -> li
     return results
 
 {% endif %}
+{%- if reddit_subreddits %}
+
+# Reddit RSS — reads official hot.rss feeds. No auth required, but Reddit has
+# historically throttled or restructured these feeds. Treat as best-effort.
+{%- for sub in reddit_subreddits %}
+
+def reddit_{{ sub | lower | replace('-', '_') | replace('+', '_') }}() -> list[dict]:
+    feed = feedparser.parse(
+        "https://www.reddit.com/r/{{ sub }}/hot.rss",
+        request_headers={"User-Agent": BOT_USER_AGENT},
+    )
+    results = []
+    for entry in feed.entries[:15]:
+        results.append({
+            "title": entry.get("title", ""),
+            "url": entry.get("link", ""),
+            "text": entry.get("summary", "")[:400],
+        })
+    return results
+{%- endfor %}
+{%- endif %}
+{%- if google_news_queries %}
+
+# Google News RSS — free, no API key, covers any topic with news coverage.
+{%- for query in google_news_queries %}
+
+def google_news_{{ loop.index }}() -> list[dict]:
+    """{{ query }}"""
+    import urllib.parse
+    q = urllib.parse.quote_plus("{{ query }}")
+    feed = feedparser.parse(f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en")
+    results = []
+    for entry in feed.entries[:10]:
+        results.append({
+            "title": entry.get("title", ""),
+            "url": entry.get("link", ""),
+            "text": entry.get("summary", "")[:400],
+        })
+    return results
+{%- endfor %}
+{%- endif %}
+{%- if youtube_channels %}
+
+# YouTube Atom feeds — stable, intentional API. Channel IDs can be found in
+# a channel's page source (look for "channel_id") or via yt-dlp --print channel_id.
+{%- for channel_id in youtube_channels %}
+
+def youtube_{{ channel_id | lower | truncate(20, true, '') }}() -> list[dict]:
+    feed = feedparser.parse(
+        "https://www.youtube.com/feeds/videos.xml?channel_id={{ channel_id }}"
+    )
+    results = []
+    for entry in feed.entries[:8]:
+        results.append({
+            "title": entry.get("title", ""),
+            "url": entry.get("link", ""),
+            "text": entry.get("summary", "")[:400],
+        })
+    return results
+{%- endfor %}
+{%- endif %}
 
 def github_trending() -> list[dict]:
     """Scrape GitHub trending repos filtered by topic keywords."""
@@ -260,5 +321,14 @@ ALL_SOURCES: dict[str, Any] = {
 {% if github_topics %}
     "github_topic_repos": github_topic_repos,
 {% endif %}
+{%- for sub in reddit_subreddits %}
+    "reddit_{{ sub | lower | replace('-', '_') | replace('+', '_') }}": reddit_{{ sub | lower | replace('-', '_') | replace('+', '_') }},
+{%- endfor %}
+{%- for query in google_news_queries %}
+    "google_news_{{ loop.index }}": google_news_{{ loop.index }},
+{%- endfor %}
+{%- for channel_id in youtube_channels %}
+    "youtube_{{ channel_id | lower | truncate(20, true, '') }}": youtube_{{ channel_id | lower | truncate(20, true, '') }},
+{%- endfor %}
     "github_trending": github_trending,
 }

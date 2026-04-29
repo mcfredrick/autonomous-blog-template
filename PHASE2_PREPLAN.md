@@ -204,3 +204,33 @@ CREATE TABLE pipeline_runs (
 **Bot name/email is topic-specific:** Even "generic" workflows like `rebuild-index.yml` need the bot name. Every workflow that commits to the repo needs templating. Added `.jinja` suffix to all committing workflows.
 
 **analytics stripped from head.html:** The Plausible snippet in Terra's `head.html` is a personal/paid analytics setup. Replaced with a comment for users to add their own. This was the only truly instance-specific thing in the theme files.
+
+---
+
+## Source Reliability Tiers
+
+Not all RSS/Atom sources are equal. A service needs to handle them differently based on how intentional and stable they are.
+
+**Tier 1 — Stable (intentional APIs):**
+- ArXiv RSS (`arxiv.org/rss/{category}`)
+- GitHub Atom releases (`github.com/{owner}/{repo}/releases.atom`)
+- YouTube Atom feeds (`youtube.com/feeds/videos.xml?channel_id=...`)
+- Google News RSS (`news.google.com/rss/search?q=...`)
+- Any site's own RSS/Atom feed (explicitly offered)
+
+These are deliberately exposed and rarely change structure. Treat failures as transient network issues, not structural breakage.
+
+**Tier 2 — Fragile (works but not guaranteed):**
+- Reddit RSS (`reddit.com/r/{sub}/hot.rss`) — has been throttled, restructured, and rate-limited before. Requires a descriptive User-Agent and silent failure handling.
+- GitHub trending HTML scrape (`github.com/trending`) — HTML layout changes break CSS selectors without warning.
+
+Tier 2 sources need: retry logic, silent failure (return `[]` rather than raising), and monitoring so breakage is detected quickly.
+
+**Tier 3 — Off-limits without significant investment:**
+- Twitter/X — API costs $100+/mo for basic read access. Not worth it.
+- Most major social platform main feeds (Instagram, TikTok, LinkedIn) — actively block scrapers, no official RSS.
+- Any site with aggressive anti-bot measures (Cloudflare challenges, fingerprinting).
+
+Don't attempt Tier 3. The cost and maintenance burden exceed the value for a free-tier autonomous blog.
+
+**Service implication:** The `sources` JSONB column on the `topics` table should include a `tier` field for each source entry. The pipeline runner uses this to apply appropriate resilience: Tier 1 gets standard retry, Tier 2 gets silent failure + monitoring alert on repeated misses, Tier 3 is rejected at config validation time with a clear error message explaining why.

@@ -46,3 +46,18 @@ github_topics:
   type: yaml
   help: "GitHub topic keywords to search (e.g. [solar-energy, carbon-footprint, climate-model])"
   default: []
+
+reddit_subreddits:
+  type: yaml
+  help: "Subreddit names to follow via RSS (e.g. [punk, punkrock, hardcorepunk]). Uses Reddit's RSS feed — reliable but historically fragile."
+  default: []
+
+google_news_queries:
+  type: yaml
+  help: "Google News search queries (e.g. [\"punk music\", \"new punk releases\"]). Free RSS, no API key needed."
+  default: []
+
+youtube_channels:
+  type: yaml
+  help: "YouTube channel IDs to follow via Atom feed (e.g. [UCxxxxxx]). Find a channel's ID in its page source or use a lookup tool."
+  default: []
