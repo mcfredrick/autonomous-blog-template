@@ -234,3 +234,33 @@ Tier 2 sources need: retry logic, silent failure (return `[]` rather than raisin
 Don't attempt Tier 3. The cost and maintenance burden exceed the value for a free-tier autonomous blog.
 
 **Service implication:** The `sources` JSONB column on the `topics` table should include a `tier` field for each source entry. The pipeline runner uses this to apply appropriate resilience: Tier 1 gets standard retry, Tier 2 gets silent failure + monitoring alert on repeated misses, Tier 3 is rejected at config validation time with a clear error message explaining why.
+
+---
+
+## Source Health Monitoring
+
+**Registration-time coverage check:** When a user registers a new topic via the web UI, run `check_sources.py` server-side against the proposed source config before committing to daily generation. If fewer than half the sources return items with at least 50% keyword relevance, surface a warning in the UI — "Your sources may not cover this topic well. Consider adding more RSS feeds or ArXiv categories." Don't hard-block registration; just warn and let the user proceed.
+
+**Continuous health monitoring:** A background job runs each topic's source config daily and stores results in a `source_health` table:
+
+```sql
+CREATE TABLE source_health (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  topic_id         UUID REFERENCES topics(id),
+  source_name      TEXT NOT NULL,
+  checked_at       TIMESTAMPTZ DEFAULT now(),
+  item_count       INTEGER NOT NULL,
+  relevance_score  FLOAT,  -- fraction of items matching topic keywords (0.0–1.0)
+  error            TEXT    -- NULL if successful
+);
+```
+
+Trend data from this table lets you detect gradual degradation (e.g. Reddit throttling slowly reducing counts over weeks) before it meaningfully harms post quality. Alert when a 7-day rolling average drops below 50% of the 30-day baseline for that source.
+
+**Tier-aware alerting thresholds:** The `tier` field on source configs informs alert sensitivity. Tier 1 sources (stable APIs) generate an alert after a single day of 0 items. Tier 2 sources (Reddit RSS, GitHub trending scrape) use a 3-day window before alerting and never page on-call — they go to a low-priority Slack channel. A Tier 2 source producing 0 items is expected occasionally and should not interrupt the human.
+
+**Visual and audio content gap:** The pipeline is fundamentally text-based — it indexes titles, descriptions, and short excerpts. Topics where the primary artifact is an image, video, or audio file cannot be well-served by this architecture without a separate understanding layer:
+
+- **Out of scope for v1:** fashion, TikTok trends, visual art, podcast-first communities, live sports scores.
+- **Reason:** Even if RSS feeds exist for these topics, the signal is weak — a fashion RSS feed yields article titles, not the images that carry the content. The LLM writing agent cannot compensate for missing signal.
+- **Path to v1 support:** An image captioning sidecar (CLIP/LLaVA) or podcast transcription sidecar (Whisper) could unblock these topics in v2. Flag them at registration time with a clear explanation, not a silent failure.

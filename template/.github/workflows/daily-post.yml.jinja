@@ -46,6 +46,14 @@ jobs:
           uv sync
           echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
 
+      - name: Check sources
+        if: {% raw %}env.SKIP_AGENTS != 'true'{% endraw %}
+        env:
+          GH_PAT: {% raw %}${{ secrets.GH_PAT }}{% endraw %}
+          OPENROUTER_API_KEY: {% raw %}${{ secrets.OPENROUTER_API_KEY }}{% endraw %}
+        run: python agents/check_sources.py
+        continue-on-error: true  # warn but don't block the post
+
       - name: Guard — skip agents if today's post already exists
         run: |
           POST="content/posts/$(date -u +%Y-%m-%d).md"

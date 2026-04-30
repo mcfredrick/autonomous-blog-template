@@ -80,6 +80,19 @@ Zero. Uses OpenRouter free-tier models only. The pipeline has built-in rate-limi
 
 The blog ships with a semantic search page powered by `fastembed` + `transformers.js`. The index rebuilds automatically after each post. No external service required — index is stored as `static/search-index.json` in the repo.
 
+## Testing your sources
+
+Before relying on your blog to publish daily, verify your sources return relevant results:
+
+```bash
+# Check all sources return relevant results
+python agents/check_sources.py --keywords "your topic keywords here"
+```
+
+This script calls every source fetcher, reports item counts and 3 sample titles per source, and scores relevance against your keywords. It exits with code 1 if more than half the sources return 0 items, so you can also run it in CI.
+
+If no `--keywords` are given, the script extracts meaningful words from `BLOG_DESCRIPTION` in `config.py` as a fallback.
+
 ## Recovering a broken post
 
 1. Delete the broken post via the GitHub API or web UI
