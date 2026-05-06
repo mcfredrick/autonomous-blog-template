@@ -27,6 +27,11 @@ github_repo:
   type: str
   help: "GitHub repo (owner/name, e.g. mcfredrick/terra)"
 
+kofi_username:
+  type: str
+  help: "Ko-fi username for the floating support widget (leave blank to disable)"
+  default: ""
+
 arxiv_categories:
   type: yaml
   help: "ArXiv category codes to follow (e.g. [eess.SY, physics.ao-ph, cond-mat.mtrl-sci])"
