@@ -87,5 +87,21 @@
       if (btn) btn.textContent = t === 'dark' ? 'Day' : 'Night';
     })();
   </script>
+  {{ with .Site.Params.kofi_username }}
+  <script src='https://storage.ko-fi.com/cdn/scripts/overlay-widget.js'></script>
+  <script>
+    (function() {
+      var s = getComputedStyle(document.documentElement);
+      var bg = s.getPropertyValue('--surface').trim();
+      var fg = s.getPropertyValue('--accent').trim();
+      kofiWidgetOverlay.draw('{{ . }}', {
+        'type': 'floating-chat',
+        'floating-chat.donateButton.text': 'Support me',
+        'floating-chat.donateButton.background-color': bg,
+        'floating-chat.donateButton.text-color': fg,
+      });
+    })();
+  </script>
+  {{ end }}
 </body>
 </html>
